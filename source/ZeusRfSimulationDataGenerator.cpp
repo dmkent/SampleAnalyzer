@@ -38,7 +38,7 @@ U32 ZeusRfSimulationDataGenerator::GenerateSimulationData( U64 largest_sample_re
 
 void ZeusRfSimulationDataGenerator::CreateSerialByte()
 {
-	U32 samples_per_bit = mSimulationSampleRateHz / mSettings->mBitRate;
+	U32 samples_per_bit = mSimulationSampleRateHz / 1;//mSettings->mBitRate;
 
 	U8 byte = mSerialText[ mStringIndex ];
 	mStringIndex++;
