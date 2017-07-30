@@ -24,120 +24,103 @@ void ZeusRfAnalyzer::SetupResults()
 	mResults->AddChannelBubblesWillAppearOn( mSettings->mInputChannel );
 }
 
+void _get_pair(AnalyzerChannelData* mSerial, U64* width_high, U64* width_low) {
+	U64 last, current;
+	
+	if( mSerial->GetBitState() == BIT_LOW ) {
+		std::cout << "unexpected BIT_LOW" << std::endl;
+	}
+
+	last = mSerial->GetSampleNumber();
+	mSerial->AdvanceToNextEdge(); //falling edge -- beginning of the start bit
+	current = mSerial->GetSampleNumber();
+	(*width_high) = current - last;
+	last = current;
+	mSerial->AdvanceToNextEdge(); //rising edge -- beginning of the start bit
+	current = mSerial->GetSampleNumber();
+	(*width_low) = current - last;		
+}
+
 void ZeusRfAnalyzer::WorkerThread()
 {
+	U64 nhigh, nlow, starting_sample, current, width;
+	
 	mSampleRateHz = GetSampleRate();
-
-	mSerial = GetAnalyzerChannelData( mSettings->mInputChannel );
-
-	if( mSerial->GetBitState() == BIT_LOW )
-		mSerial->AdvanceToNextEdge();
-
-	U64 nhigh, nlow, starting_sample;
-	U64 last = mSerial->GetSampleNumber();
-	U64 SAMPLES_PREAMBLE_MIN = 14100 * 1E-6 * mSampleRateHz;
+	U64 SAMPLES_PREAMBLE_MIN = 13950 * 1E-6 * mSampleRateHz;
 	U64 SAMPLES_PREAMBLE_INIT_FLAG = 15000 * 1E-6 * mSampleRateHz;
 	U64 SAMPLES_PREAMBLE_MAX = 16450 * 1E-6 * mSampleRateHz + 100;
-	U64 SAMPLES_PAUSE_MIN = 1210 * 1E-6 * mSampleRateHz - 40;
-	U64 SAMPLES_PAUSE_MAX = 1210 * 1E-6 * mSampleRateHz + 40;
+	U64 SAMPLES_PAUSE_MIN = 3550 * 1E-6 * mSampleRateHz - 100;
+	U64 SAMPLES_PAUSE_MAX = 3770 * 1E-6 * mSampleRateHz + 100;
 	U64 SAMPLES_PRE_HIGH_MIN = 275 * 1E-6 * mSampleRateHz;
 	U64 SAMPLES_PRE_HIGH_MAX = 540 * 1E-6 * mSampleRateHz;
 	U64 SAMPLES_PRE_LOW_MIN = 235 * 1E-6 * mSampleRateHz;
 	U64 SAMPLES_PRE_LOW_MAX = 500 * 1E-6 * mSampleRateHz;
-
+	U16 MAX_PREAMBLE = 12;
+	
+	mSerial = GetAnalyzerChannelData( mSettings->mInputChannel );
+	if( mSerial->GetBitState() == BIT_LOW )
+		mSerial->AdvanceToNextEdge();
+	U64 last = mSerial->GetSampleNumber();
+	
+	U64 width_high, width_low, exp_width_high, exp_width_low;
 	for( ; ; )
 	{
-		mSerial->AdvanceToNextEdge(); //falling edge -- beginning of the start bit
-
-		U64 current = mSerial->GetSampleNumber();
-		U64 width = current - last;
-
-		//std::cout << width << " - " << SAMPLES_INTRO << "\n";
-		if ((SAMPLES_PREAMBLE_MIN < width) && (width < SAMPLES_PREAMBLE_MAX)) {
-			//std::cout << width << " - " << SAMPLES_INTRO << " - HIT\n";
-			mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::Square, mSettings->mInputChannel );
-		} else {
-			last = current;
-			continue;
-		}
-
-		if (width > SAMPLES_PREAMBLE_INIT_FLAG) {
-			last = current;
+		if( mSerial->GetBitState() == BIT_LOW )
 			mSerial->AdvanceToNextEdge();
-			current = mSerial->GetSampleNumber();
-			width = current - last;
-			//std::cout << width << " - " << SAMPLES_PAUSE << "\n";
-			if ((SAMPLES_PAUSE_MIN < width) && (width < SAMPLES_PAUSE_MAX)) {
-				mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::Dot, mSettings->mInputChannel );
-			} else {
-				last = current;
-				continue;
-			}
-		}
-		last = current;
 
-		mResults->CommitResults();
-		ReportProgress( current );
+		// Get a single pair of transitions
+		// Store width_low and width_high
+		_get_pair(mSerial, &exp_width_high, &exp_width_low);
+		
+		// Loop over pairs while match previous
+		U8 failed = 0, nmatched = 0;
+		for( ; ; )
+		{
+			_get_pair(mSerial, &width_high, &width_low);
 
-		U8 failed = 0;
-		for(int i = 0; i < 11; i++) {
-			mSerial->AdvanceToNextEdge();
-			current = mSerial->GetSampleNumber();
-			width = current - last;
-			//std::cout << current << " - " << i << " - " << width << " - " << SAMPLES_PRE_HIGH << "\n";
-			if ((SAMPLES_PRE_HIGH_MIN < width) && (width < SAMPLES_PRE_HIGH_MAX)) {
-				mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::Dot, mSettings->mInputChannel );
+			if (((exp_width_high * 0.9) <= width_high) &&
+			    (width_high <= (exp_width_high * 1.1))) {
+				// Matched on HIGH pulse.
+				if (((exp_width_low * 0.9) <= width_low) &&
+			        (width_low <= (exp_width_low * 1.1))) {
+					// Matched on low as well
+					nmatched++;
+				} else if ((SAMPLES_PAUSE_MIN <= width_low) && (width_low <= SAMPLES_PAUSE_MAX)) {
+					nmatched++;
+					// Break without failure - into data mode
+					break;
+				} else {
+					failed = 1;
+					break;
+				}
 			} else {
-				last = current;
 				failed = 1;
 				break;
 			}
-			last = current;
 
-			mSerial->AdvanceToNextEdge();
-			current = mSerial->GetSampleNumber();
-			width = current - last;
-			//std::cout << current << " - " << i << " - " << width << " - " << SAMPLES_PRE_LOW << "\n";
-			if ((SAMPLES_PRE_LOW_MIN < width) && (width < SAMPLES_PRE_LOW_MAX)) {
-				mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::Dot, mSettings->mInputChannel );
-			} else {
-				last = current;
+			if (nmatched > MAX_PREAMBLE) {
 				failed = 1;
 				break;
 			}
-			last = current;
 
-		}
-
-		mSerial->AdvanceToNextEdge();
-		current = mSerial->GetSampleNumber();
-		width = current - last;
-		//std::cout << current << " - " << width << " - " << SAMPLES_PRE_HIGH << "\n";
-		if ((SAMPLES_PRE_HIGH_MIN < width) && (width < SAMPLES_PRE_HIGH_MAX)) {
 			mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::Dot, mSettings->mInputChannel );
-		} else {
-			last = current;
-			failed = 1;
-			break;
 		}
-		last = current;
-
 		mResults->CommitResults();
 		ReportProgress( mSerial->GetSampleNumber() );
 
-		mSerial->AdvanceToNextEdge();
-		current = mSerial->GetSampleNumber();
-		last = current;
-
+		// If not matching then restart
 		if (failed > 0) {
 			continue;
 		}
 
+		last = mSerial->GetSampleNumber();
+
+		// If reach long low pair then into data mode.
 		U8 data = 0;
 		U8 mask = 1 << 7;
 		U8 nbits = 0;
 		U8 nbytes = 0;
-		starting_sample = current;
+		starting_sample = last;
 		for( ;; ) {
 			mSerial->AdvanceToNextEdge();
 			current = mSerial->GetSampleNumber();
