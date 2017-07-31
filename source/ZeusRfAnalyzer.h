@@ -22,6 +22,11 @@ public:
 	virtual bool NeedsRerun();
 
 protected: //vars
+	void GetPairTransitions(U64* pos_start, U64* width_high, U64* width_low);
+	void MarkByte(U64 start, U64 end, U8 data);
+	void MarkSyncBit(U64 pos);
+	void AdvanceUntilHigh();
+	
 	std::auto_ptr< ZeusRfAnalyzerSettings > mSettings;
 	std::auto_ptr< ZeusRfAnalyzerResults > mResults;
 	AnalyzerChannelData* mSerial;

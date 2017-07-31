@@ -24,7 +24,7 @@ void ZeusRfAnalyzer::SetupResults()
 	mResults->AddChannelBubblesWillAppearOn( mSettings->mInputChannel );
 }
 
-void _get_pair(AnalyzerChannelData* mSerial, U64* width_high, U64* width_low) {
+void ZeusRfAnalyzer::GetPairTransitions(U64* pos_start, U64* width_high, U64* width_low) {
 	U64 last, current;
 	
 	if( mSerial->GetBitState() == BIT_LOW ) {
@@ -32,6 +32,7 @@ void _get_pair(AnalyzerChannelData* mSerial, U64* width_high, U64* width_low) {
 	}
 
 	last = mSerial->GetSampleNumber();
+	(*pos_start) = last;
 	mSerial->AdvanceToNextEdge(); //falling edge -- beginning of the start bit
 	current = mSerial->GetSampleNumber();
 	(*width_high) = current - last;
@@ -41,42 +42,57 @@ void _get_pair(AnalyzerChannelData* mSerial, U64* width_high, U64* width_low) {
 	(*width_low) = current - last;		
 }
 
+void ZeusRfAnalyzer::MarkByte(U64 start, U64 end, U8 data) {
+	Frame frame;
+	frame.mData1 = data;
+	frame.mFlags = 0;
+	frame.mStartingSampleInclusive = start;
+	frame.mEndingSampleInclusive = end;
+
+	mResults->AddFrame( frame );
+	mResults->CommitResults();
+	ReportProgress( mSerial->GetSampleNumber() );
+}
+
+void ZeusRfAnalyzer::MarkSyncBit(U64 pos) {
+	mResults->AddMarker(pos, AnalyzerResults::Dot, mSettings->mInputChannel );
+	mResults->CommitResults();
+	ReportProgress(pos);
+}
+
+void ZeusRfAnalyzer::AdvanceUntilHigh() {
+	if( mSerial->GetBitState() == BIT_LOW )
+		mSerial->AdvanceToNextEdge();
+}
+
 void ZeusRfAnalyzer::WorkerThread()
 {
-	U64 nhigh, nlow, starting_sample, current, width;
+	U64 nhigh, nlow, starting_sample, pos_start,
+	    width_high, width_low, exp_width_high, exp_width_low;
 	
 	mSampleRateHz = GetSampleRate();
 	U64 SAMPLES_PREAMBLE_MIN = 13950 * 1E-6 * mSampleRateHz;
-	U64 SAMPLES_PREAMBLE_INIT_FLAG = 15000 * 1E-6 * mSampleRateHz;
-	U64 SAMPLES_PREAMBLE_MAX = 16450 * 1E-6 * mSampleRateHz + 100;
 	U64 SAMPLES_PAUSE_MIN = 3550 * 1E-6 * mSampleRateHz - 100;
 	U64 SAMPLES_PAUSE_MAX = 3770 * 1E-6 * mSampleRateHz + 100;
-	U64 SAMPLES_PRE_HIGH_MIN = 275 * 1E-6 * mSampleRateHz;
-	U64 SAMPLES_PRE_HIGH_MAX = 540 * 1E-6 * mSampleRateHz;
-	U64 SAMPLES_PRE_LOW_MIN = 235 * 1E-6 * mSampleRateHz;
-	U64 SAMPLES_PRE_LOW_MAX = 500 * 1E-6 * mSampleRateHz;
 	U16 MAX_PREAMBLE = 12;
 	
 	mSerial = GetAnalyzerChannelData( mSettings->mInputChannel );
-	if( mSerial->GetBitState() == BIT_LOW )
-		mSerial->AdvanceToNextEdge();
-	U64 last = mSerial->GetSampleNumber();
+
+	AdvanceUntilHigh();
 	
-	U64 width_high, width_low, exp_width_high, exp_width_low;
 	for( ; ; )
 	{
-		if( mSerial->GetBitState() == BIT_LOW )
-			mSerial->AdvanceToNextEdge();
-
+		AdvanceUntilHigh();
+		
 		// Get a single pair of transitions
 		// Store width_low and width_high
-		_get_pair(mSerial, &exp_width_high, &exp_width_low);
+		GetPairTransitions(&pos_start, &exp_width_high, &exp_width_low);
 		
 		// Loop over pairs while match previous
 		U8 failed = 0, nmatched = 0;
 		for( ; ; )
 		{
-			_get_pair(mSerial, &width_high, &width_low);
+			GetPairTransitions(&pos_start, &width_high, &width_low);
 
 			if (((exp_width_high * 0.9) <= width_high) &&
 			    (width_high <= (exp_width_high * 1.1))) {
@@ -103,47 +119,28 @@ void ZeusRfAnalyzer::WorkerThread()
 				break;
 			}
 
-			mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::Dot, mSettings->mInputChannel );
+			MarkSyncBit(pos_start + width_high + width_low);
 		}
-		mResults->CommitResults();
-		ReportProgress( mSerial->GetSampleNumber() );
 
 		// If not matching then restart
 		if (failed > 0) {
 			continue;
 		}
 
-		last = mSerial->GetSampleNumber();
-
 		// If reach long low pair then into data mode.
 		U8 data = 0;
 		U8 mask = 1 << 7;
 		U8 nbits = 0;
 		U8 nbytes = 0;
-		starting_sample = last;
+		starting_sample = pos_start + width_high + width_low;
 		for( ;; ) {
-			mSerial->AdvanceToNextEdge();
-			current = mSerial->GetSampleNumber();
-			nhigh = current - last;
-			last = current;
-			current = mSerial->GetSampleOfNextEdge();
-			nlow = current - last;
+			GetPairTransitions(&pos_start, &nhigh, &nlow);
 			//std::cout << nhigh << " : " << nlow << "\n";
 			if (nlow > SAMPLES_PREAMBLE_MIN) {
-				Frame frame;
-				frame.mData1 = data;
-				frame.mFlags = 0;
-				frame.mStartingSampleInclusive = starting_sample;
-				frame.mEndingSampleInclusive = last;
-
-				mResults->AddFrame( frame );
-				mResults->CommitResults();
-				ReportProgress( mSerial->GetSampleNumber() );
+				// Mark to start of this pair (we ignore this one)
+				MarkByte(starting_sample, pos_start, data);
 				break;
 			}
-
-			mSerial->AdvanceToNextEdge();
-			last = current;
 
 			data <<= 1;
 			nbits++;
@@ -153,19 +150,11 @@ void ZeusRfAnalyzer::WorkerThread()
 
 			if (nbits == 8) {
 				//we have a byte to save. 
-				Frame frame;
-				frame.mData1 = data;
-				frame.mFlags = 0;
-				frame.mStartingSampleInclusive = starting_sample;
-				frame.mEndingSampleInclusive = mSerial->GetSampleOfNextEdge();
-
-				mResults->AddFrame( frame );
-				mResults->CommitResults();
-				ReportProgress( mSerial->GetSampleNumber() );
-
+				MarkByte(starting_sample, pos_start + nhigh + nlow, data);
+	
 				nbits = 0;
 				data = 0;
-				starting_sample = current;
+				starting_sample = pos_start + nhigh + nlow;
 			}
 		}
 
