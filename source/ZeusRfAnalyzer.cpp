@@ -3,6 +3,12 @@
 #include <AnalyzerChannelData.h>
 
 #include <iostream>
+#include <functional>
+
+#include "ZeusRfDecode.h"
+
+using namespace std::placeholders;
+
 
 ZeusRfAnalyzer::ZeusRfAnalyzer()
 :	Analyzer2(),  
@@ -24,7 +30,8 @@ void ZeusRfAnalyzer::SetupResults()
 	mResults->AddChannelBubblesWillAppearOn( mSettings->mInputChannel );
 }
 
-void ZeusRfAnalyzer::GetPairTransitions(U64* pos_start, U64* width_high, U64* width_low) {
+void ZeusRfAnalyzer::GetPairTransitions(U64* pos_start, U64* pos_end, 
+										U32* width_high, U32* width_low) {
 	U64 last, current;
 	
 	if( mSerial->GetBitState() == BIT_LOW ) {
@@ -33,13 +40,14 @@ void ZeusRfAnalyzer::GetPairTransitions(U64* pos_start, U64* width_high, U64* wi
 
 	last = mSerial->GetSampleNumber();
 	(*pos_start) = last;
-	mSerial->AdvanceToNextEdge(); //falling edge -- beginning of the start bit
+	mSerial->AdvanceToNextEdge(); //falling edge -- beginning of low part of bit
 	current = mSerial->GetSampleNumber();
-	(*width_high) = current - last;
+	(*width_high) = (current - last) * 1E6 / mSampleRateHz;
 	last = current;
-	mSerial->AdvanceToNextEdge(); //rising edge -- beginning of the start bit
+	mSerial->AdvanceToNextEdge(); //rising edge -- beginning of the next bit
 	current = mSerial->GetSampleNumber();
-	(*width_low) = current - last;		
+	(*width_low) = (current - last) * 1E6 / mSampleRateHz;	
+	(*pos_end) = current;
 }
 
 void ZeusRfAnalyzer::MarkByte(U64 start, U64 end, U8 data) {
@@ -67,97 +75,29 @@ void ZeusRfAnalyzer::AdvanceUntilHigh() {
 
 void ZeusRfAnalyzer::WorkerThread()
 {
-	U64 nhigh, nlow, starting_sample, pos_start,
-	    width_high, width_low, exp_width_high, exp_width_low;
-	
+	U64 data_start;
 	mSampleRateHz = GetSampleRate();
-	U64 SAMPLES_PREAMBLE_MIN = 13950 * 1E-6 * mSampleRateHz;
-	U64 SAMPLES_PAUSE_MIN = 3550 * 1E-6 * mSampleRateHz - 100;
-	U64 SAMPLES_PAUSE_MAX = 3770 * 1E-6 * mSampleRateHz + 100;
-	U16 MAX_PREAMBLE = 12;
-	
 	mSerial = GetAnalyzerChannelData( mSettings->mInputChannel );
-
 	AdvanceUntilHigh();
-	
+
 	for( ; ; )
 	{
-		AdvanceUntilHigh();
+		data_start = block_until_data(
+			std::bind(&ZeusRfAnalyzer::AdvanceUntilHigh, this),
+			std::bind(&ZeusRfAnalyzer::GetPairTransitions, this, _1, _2, _3, _4),
+			std::bind(&ZeusRfAnalyzer::MarkSyncBit, this, _1),
+			std::bind(&ZeusRfAnalyzer::MarkByte, this, _1, _2, _3)
+		);
 		
-		// Get a single pair of transitions
-		// Store width_low and width_high
-		GetPairTransitions(&pos_start, &exp_width_high, &exp_width_low);
-		
-		// Loop over pairs while match previous
-		U8 failed = 0, nmatched = 0;
-		for( ; ; )
-		{
-			GetPairTransitions(&pos_start, &width_high, &width_low);
-
-			if (((exp_width_high * 0.9) <= width_high) &&
-			    (width_high <= (exp_width_high * 1.1))) {
-				// Matched on HIGH pulse.
-				if (((exp_width_low * 0.9) <= width_low) &&
-			        (width_low <= (exp_width_low * 1.1))) {
-					// Matched on low as well
-					nmatched++;
-				} else if ((SAMPLES_PAUSE_MIN <= width_low) && (width_low <= SAMPLES_PAUSE_MAX)) {
-					nmatched++;
-					// Break without failure - into data mode
-					break;
-				} else {
-					failed = 1;
-					break;
-				}
-			} else {
-				failed = 1;
-				break;
-			}
-
-			if (nmatched > MAX_PREAMBLE) {
-				failed = 1;
-				break;
-			}
-
-			MarkSyncBit(pos_start + width_high + width_low);
-		}
-
-		// If not matching then restart
-		if (failed > 0) {
-			continue;
-		}
-
 		// If reach long low pair then into data mode.
-		U8 data = 0;
-		U8 mask = 1 << 7;
-		U8 nbits = 0;
-		U8 nbytes = 0;
-		starting_sample = pos_start + width_high + width_low;
-		for( ;; ) {
-			GetPairTransitions(&pos_start, &nhigh, &nlow);
-			//std::cout << nhigh << " : " << nlow << "\n";
-			if (nlow > SAMPLES_PREAMBLE_MIN) {
-				// Mark to start of this pair (we ignore this one)
-				MarkByte(starting_sample, pos_start, data);
-				break;
-			}
-
-			data <<= 1;
-			nbits++;
-			if (nhigh < nlow) {
-				data |= 1;
-			}
-
-			if (nbits == 8) {
-				//we have a byte to save. 
-				MarkByte(starting_sample, pos_start + nhigh + nlow, data);
-	
-				nbits = 0;
-				data = 0;
-				starting_sample = pos_start + nhigh + nlow;
-			}
-		}
-
+		receive_and_process_data(
+			data_start,
+			std::bind(&ZeusRfAnalyzer::AdvanceUntilHigh, this),
+			std::bind(&ZeusRfAnalyzer::GetPairTransitions, this, _1, _2, _3, _4),
+			std::bind(&ZeusRfAnalyzer::MarkSyncBit, this, _1),
+			std::bind(&ZeusRfAnalyzer::MarkByte, this, _1, _2, _3)
+		);
+		
 		mResults->CommitResults();
 		ReportProgress( mSerial->GetSampleNumber() );
 	}

@@ -22,7 +22,7 @@ public:
 	virtual bool NeedsRerun();
 
 protected: //vars
-	void GetPairTransitions(U64* pos_start, U64* width_high, U64* width_low);
+	void GetPairTransitions(U64* pos_start, U64* pos_end, U32* width_high, U32* width_low);
 	void MarkByte(U64 start, U64 end, U8 data);
 	void MarkSyncBit(U64 pos);
 	void AdvanceUntilHigh();
