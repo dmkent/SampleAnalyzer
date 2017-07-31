@@ -85,16 +85,13 @@ void ZeusRfAnalyzer::WorkerThread()
 		data_start = block_until_data(
 			std::bind(&ZeusRfAnalyzer::AdvanceUntilHigh, this),
 			std::bind(&ZeusRfAnalyzer::GetPairTransitions, this, _1, _2, _3, _4),
-			std::bind(&ZeusRfAnalyzer::MarkSyncBit, this, _1),
-			std::bind(&ZeusRfAnalyzer::MarkByte, this, _1, _2, _3)
+			std::bind(&ZeusRfAnalyzer::MarkSyncBit, this, _1)
 		);
 		
 		// If reach long low pair then into data mode.
 		receive_and_process_data(
 			data_start,
-			std::bind(&ZeusRfAnalyzer::AdvanceUntilHigh, this),
 			std::bind(&ZeusRfAnalyzer::GetPairTransitions, this, _1, _2, _3, _4),
-			std::bind(&ZeusRfAnalyzer::MarkSyncBit, this, _1),
 			std::bind(&ZeusRfAnalyzer::MarkByte, this, _1, _2, _3)
 		);
 		

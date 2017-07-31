@@ -26,8 +26,7 @@
 U64 block_until_data(
     std::function<void()> AdvanceUntilHigh,
     std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64)> MarkSyncBit,
-    std::function<void(U64, U64, U8)> MarkByte
+	std::function<void(U64)> MarkSyncBit
 ) {
     U64 pos_start, pos_end;
     U32 width_high, width_low, exp_width_high, exp_width_low;
@@ -86,10 +85,8 @@ U64 block_until_data(
 
 void receive_and_process_data(
     U64 data_start,
-    std::function<void()> AdvanceUntilHigh,
     std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64)> MarkSyncBit,
-    std::function<void(U64, U64, U8)> MarkByte
+	std::function<void(U64, U64, U8)> MarkByte
 ){
     U32 nhigh, nlow;
     U64 starting_sample, pos_start, pos_end;

@@ -22,24 +22,66 @@
 #pragma once
 
 #include <functional>
+/* TODO: remove this dependency, need to somehow combine types from here and Arduino...*/
 #include <Analyzer.h>
 
+/* Used to flag end of data (in micro seconds) */
 #define SAMPLES_PREAMBLE_MIN 13950
+/* Used to flag end of sync/start of data */
 #define SAMPLES_PAUSE_MIN 3550
 #define SAMPLES_PAUSE_MAX 3800
+/* Max sync pairs expected */
 #define MAX_PREAMBLE 12
 
+/**
+  * Progressivly work through the stream of data until we detect initial sync signal.
+  *
+  * This works by looking for pairs of transitions (one high pulse, one low) and comparing
+  * their width to the previous pairs. If we get a series of pairs with same widths then
+  * we know we have a signal. When we then get a long low pulse we know data is about to
+  * start.
+  *
+  * Callbacks:
+  *   AdvanceUntilHigh - should skip read pulses until current one is HIGH.
+  *   GetPairTransitions - should get/wait for next pair of pulses. The values of
+  *                        the four pointers should be set to:
+  *                            1. Position of pair start (as position count)
+  *                            2. Position of pair end (as position count)
+  *                            3. Width of high pulse (in micro seconds)
+  *                            4. Width of low pulse (in micro seconds)
+  *   MarkSyncBit - called when a complete sync pair is detected giving the
+  *                 end position count.
+  *
+  * Returns:
+  *   The current position index for start of data.
+  */
 U64 block_until_data(
     std::function<void()> AdvanceUntilHigh,
     std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64)> MarkSyncBit,
-    std::function<void(U64, U64, U8)> MarkByte
+	std::function<void(U64)> MarkSyncBit
  );
 
+/**
+  * Progressivly work through the stream of data returning decoded byte data.
+  *
+  * This applies on-off-keying (OOK) to decode data from pulses.
+  *
+  * Takes the initial position index as an argument.
+  *
+  * Callbacks:
+  *   GetPairTransitions - should get/wait for next pair of pulses. The values of
+  *                        the four pointers should be set to:
+  *                            1. Position of pair start (as position count)
+  *                            2. Position of pair end (as position count)
+  *                            3. Width of high pulse (in micro seconds)
+  *                            4. Width of low pulse (in micro seconds)
+  *   MarkByte - called when a complete byte has been decoded. Arguments will be:
+  *                  1. Starting position index of byte
+  *                  2. Ending position index of byte
+  *                  3. Byte value
+  */
 void receive_and_process_data(
     U64 data_start,
-    std::function<void()> AdvanceUntilHigh,
     std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64)> MarkSyncBit,
-    std::function<void(U64, U64, U8)> MarkByte 
+	std::function<void(U64, U64, U8)> MarkByte 
 );
