@@ -21,12 +21,12 @@
  */
 
 #include "ZeusRfDecode.h"
-#include <iostream>
+
 
 U64 block_until_data(
-    std::function<void()> AdvanceUntilHigh,
-    std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64)> MarkSyncBit
+    AdvanceHighFuncType AdvanceUntilHigh,
+    PairTransFuncType GetPairTransitions,
+	MarkSyncBitFuncType MarkSyncBit
 ) {
     U64 pos_start, pos_end;
     U32 width_high, width_low, exp_width_high, exp_width_low;
@@ -85,8 +85,8 @@ U64 block_until_data(
 
 void receive_and_process_data(
     U64 data_start,
-    std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64, U64, U8)> MarkByte
+    PairTransFuncType GetPairTransitions,
+	MarkByteFuncType MarkByte
 ){
     U32 nhigh, nlow;
     U64 starting_sample, pos_start, pos_end;
@@ -97,7 +97,6 @@ void receive_and_process_data(
     starting_sample = data_start;
     for( ;; ) {
         GetPairTransitions(&pos_start, &pos_end, &nhigh, &nlow);
-        //std::cout << nhigh << " : " << nlow << "\n";
         if (nlow > SAMPLES_PREAMBLE_MIN) {
             // Mark to start of this pair (we ignore this one)
             MarkByte(starting_sample, pos_start, data);

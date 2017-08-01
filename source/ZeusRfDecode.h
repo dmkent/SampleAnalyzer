@@ -21,9 +21,24 @@
  */
 #pragma once
 
+/* Types */
+typedef unsigned char U8;
+typedef unsigned int U32;
+typedef unsigned long long int U64;
+
+
+#ifdef ARDUINO
+typedef void (*AdvanceHighFuncType)();
+typedef U64 (*PairTransFuncType)(U64*, U64*, U32*, U32*);
+typedef void(*MarkByteFuncType)(U64, U64, U8);
+typedef void(*MarkSyncBitFuncType)(U64);    
+#else
 #include <functional>
-/* TODO: remove this dependency, need to somehow combine types from here and Arduino...*/
-#include <Analyzer.h>
+typedef std::function<void()> AdvanceHighFuncType;
+typedef std::function<void(U64*, U64*, U32*, U32*)> PairTransFuncType;
+typedef std::function<void(U64, U64, U8)> MarkByteFuncType;
+typedef std::function<void(U64)> MarkSyncBitFuncType;
+#endif
 
 /* Used to flag end of data (in micro seconds) */
 #define SAMPLES_PREAMBLE_MIN 13950
@@ -56,10 +71,10 @@
   *   The current position index for start of data.
   */
 U64 block_until_data(
-    std::function<void()> AdvanceUntilHigh,
-    std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64)> MarkSyncBit
- );
+    AdvanceHighFuncType AdvanceUntilHigh,
+    PairTransFuncType GetPairTransitions,
+	MarkSyncBitFuncType MarkSyncBit
+);
 
 /**
   * Progressivly work through the stream of data returning decoded byte data.
@@ -82,6 +97,6 @@ U64 block_until_data(
   */
 void receive_and_process_data(
     U64 data_start,
-    std::function<void(U64*, U64*, U32*, U32*)> GetPairTransitions,
-	std::function<void(U64, U64, U8)> MarkByte 
+    PairTransFuncType GetPairTransitions,
+	MarkByteFuncType MarkByte 
 );
