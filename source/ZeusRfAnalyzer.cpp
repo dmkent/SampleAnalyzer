@@ -5,7 +5,7 @@
 #include <iostream>
 #include <functional>
 
-#include "ZeusRfDecode.h"
+#include "zeus_rf_core/ZeusRfDecode.h"
 
 using namespace std::placeholders;
 

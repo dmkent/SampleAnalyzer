@@ -1,3 +1,6 @@
 [submodule "AnalyzerSDK"]
 	path = AnalyzerSDK
 	url = https://github.com/saleae/AnalyzerSDK.git
+[submodule "source/zeus_rf_core"]
+	path = source/zeus_rf_core
+	url = https://github.com/dmkent/zeus-rf-core.git

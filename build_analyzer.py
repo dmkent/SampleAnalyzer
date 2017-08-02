@@ -19,6 +19,7 @@ o_files.extend( glob.glob( "*" + dylib_ext ) )
 for o_file in o_files:
     os.remove( o_file )
 os.chdir( ".." )
+os.makedirs( "release/zeus_rf_core" )
 
 
 #make sure the debug folder exists, and clean out any .o/.so files if there are any
@@ -31,10 +32,11 @@ o_files.extend( glob.glob( "*" + dylib_ext ) )
 for o_file in o_files:
     os.remove( o_file )
 os.chdir( ".." )
+os.makedirs( "debug/zeus_rf_core" )
 
 #find all the cpp files in /source.  We'll compile all of them
 os.chdir( "source" )
-cpp_files = glob.glob( "*.cpp" );
+cpp_files = glob.glob( "*.cpp" ) + glob.glob("zeus_rf_core/*.cpp")
 os.chdir( ".." )
 
 #specify the search paths/dependencies/options for gcc
