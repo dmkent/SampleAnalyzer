@@ -23,13 +23,13 @@
 #include "ZeusRfDecode.h"
 
 
-U64 block_until_data(
+INTPOS block_until_data(
     AdvanceHighFuncType AdvanceUntilHigh,
     PairTransFuncType GetPairTransitions,
 	MarkSyncBitFuncType MarkSyncBit
 ) {
-    U64 pos_start, pos_end;
-    U32 width_high, width_low, exp_width_high, exp_width_low;
+    INTPOS pos_start, pos_end;
+    INTWID width_high, width_low, exp_width_high, exp_width_low;
 
     for( ; ; ) {
         
@@ -40,7 +40,7 @@ U64 block_until_data(
 		GetPairTransitions(&pos_start, &pos_end, &exp_width_high, &exp_width_low);
 		
 		// Loop over pairs while match previous
-		U8 failed = 0, nmatched = 0;
+		BYTE failed = 0, nmatched = 0;
 		for( ; ; )
 		{
 			GetPairTransitions(&pos_start, &pos_end, &width_high, &width_low);
@@ -84,16 +84,16 @@ U64 block_until_data(
 }
 
 void receive_and_process_data(
-    U64 data_start,
+    INTPOS data_start,
     PairTransFuncType GetPairTransitions,
 	MarkByteFuncType MarkByte
 ){
-    U32 nhigh, nlow;
-    U64 starting_sample, pos_start, pos_end;
-    U8 data = 0;
-    U8 mask = 1 << 7;
-    U8 nbits = 0;
-    U8 nbytes = 0;
+    INTWID nhigh, nlow;
+    INTPOS starting_sample, pos_start, pos_end;
+    BYTE data = 0;
+    BYTE mask = 1 << 7;
+    BYTE nbits = 0;
+    BYTE nbytes = 0;
     starting_sample = data_start;
     for( ;; ) {
         GetPairTransitions(&pos_start, &pos_end, &nhigh, &nlow);

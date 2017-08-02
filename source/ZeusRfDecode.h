@@ -21,30 +21,34 @@
  */
 #pragma once
 
-/* Types */
-typedef unsigned char U8;
-typedef unsigned int U32;
-typedef unsigned long long int U64;
-
-
 #ifdef ARDUINO
+#include <Arduino.h>
+typedef unsigned long INTPOS;
+typedef unsigned long INTWID;
+typedef byte BYTE;
+
 typedef void (*AdvanceHighFuncType)();
-typedef U64 (*PairTransFuncType)(U64*, U64*, U32*, U32*);
-typedef void(*MarkByteFuncType)(U64, U64, U8);
-typedef void(*MarkSyncBitFuncType)(U64);    
+typedef void (*PairTransFuncType)(INTPOS*, INTPOS*, INTWID*, INTWID*);
+typedef void (*MarkByteFuncType)(INTPOS, INTPOS, BYTE);
+typedef void (*MarkSyncBitFuncType)(INTPOS);    
 #else
 #include <functional>
+#include <Analyzer.h>
+typedef U64 INTPOS;
+typedef U32 INTWID;
+typedef U8 BYTE;
+
 typedef std::function<void()> AdvanceHighFuncType;
-typedef std::function<void(U64*, U64*, U32*, U32*)> PairTransFuncType;
-typedef std::function<void(U64, U64, U8)> MarkByteFuncType;
-typedef std::function<void(U64)> MarkSyncBitFuncType;
+typedef std::function<void(INTPOS*, INTPOS*, INTWID*, INTWID*)> PairTransFuncType;
+typedef std::function<void(INTPOS, INTPOS, BYTE)> MarkByteFuncType;
+typedef std::function<void(INTPOS)> MarkSyncBitFuncType;
 #endif
 
 /* Used to flag end of data (in micro seconds) */
-#define SAMPLES_PREAMBLE_MIN 13950
+#define SAMPLES_PREAMBLE_MIN 13700
 /* Used to flag end of sync/start of data */
 #define SAMPLES_PAUSE_MIN 3550
-#define SAMPLES_PAUSE_MAX 3800
+#define SAMPLES_PAUSE_MAX 3900
 /* Max sync pairs expected */
 #define MAX_PREAMBLE 12
 
@@ -70,7 +74,7 @@ typedef std::function<void(U64)> MarkSyncBitFuncType;
   * Returns:
   *   The current position index for start of data.
   */
-U64 block_until_data(
+INTPOS block_until_data(
     AdvanceHighFuncType AdvanceUntilHigh,
     PairTransFuncType GetPairTransitions,
 	MarkSyncBitFuncType MarkSyncBit
@@ -96,7 +100,7 @@ U64 block_until_data(
   *                  3. Byte value
   */
 void receive_and_process_data(
-    U64 data_start,
+    INTPOS data_start,
     PairTransFuncType GetPairTransitions,
 	MarkByteFuncType MarkByte 
 );
